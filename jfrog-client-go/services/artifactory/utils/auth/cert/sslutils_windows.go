@@ -1,6 +1,6 @@
 // +build windows
 
-package utils
+package cert
 
 import (
 	"crypto/x509"
@@ -8,7 +8,7 @@ import (
 	"unsafe"
 )
 
-func LoadSystemRoots() (*x509.CertPool, error) {
+func loadSystemRoots() (*x509.CertPool, error) {
 	const CRYPT_E_NOT_FOUND = 0x80092004
 
 	store, err := syscall.CertOpenSystemStore(0, syscall.StringToUTF16Ptr("ROOT"))

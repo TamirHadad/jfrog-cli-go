@@ -2,14 +2,15 @@ package commands
 
 import (
 	"fmt"
-	"github.com/jfrogdev/jfrog-cli-go/artifactory/utils"
 	"github.com/jfrogdev/jfrog-cli-go/utils/cliutils"
+	"github.com/jfrogdev/jfrog-cli-go/artifactory/utils"
 	"github.com/jfrogdev/jfrog-cli-go/utils/config"
 	"github.com/jfrogdev/jfrog-cli-go/utils/io/fileutils"
 	"github.com/jfrogdev/jfrog-cli-go/utils/io/ioutils"
 	"strings"
 	"errors"
 	"github.com/jfrogdev/jfrog-cli-go/utils/cliutils/log"
+
 )
 
 func Config(details *config.ArtifactoryDetails, defaultDetails *config.ArtifactoryDetails, interactive,
@@ -266,7 +267,8 @@ func encryptPassword(details *config.ArtifactoryDetails) (*config.ArtifactoryDet
 		return details, nil
 	}
 	log.Info("Encrypting password...")
-	response, encPassword, err := utils.GetEncryptedPasswordFromArtifactory(details)
+	artAuth := details.CreateArtAuthConfig()
+	response, encPassword, err := utils.GetEncryptedPasswordFromArtifactory(artAuth)
 	if err != nil {
 		return nil, err
 	}

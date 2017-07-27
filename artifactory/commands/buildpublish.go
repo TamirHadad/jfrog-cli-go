@@ -2,6 +2,7 @@ package commands
 
 import (
 	"github.com/jfrogdev/jfrog-cli-go/artifactory/utils"
+	clientutils "github.com/jfrogdev/jfrog-cli-go/jfrog-client-go/services/artifactory/utils"
 	"sort"
 	"fmt"
 	"strings"
@@ -10,14 +11,12 @@ import (
 	"github.com/jfrogdev/jfrog-cli-go/utils/cliutils"
 	"github.com/jfrogdev/jfrog-cli-go/utils/cliutils/log"
 	"errors"
+	"github.com/jfrogdev/jfrog-cli-go/utils/config"
 )
 
-func BuildPublish(buildName, buildNumber string, flags *utils.BuildInfoFlags) error {
-	err := utils.PreCommandSetup(flags)
-	if err != nil {
-		return err
-	}
-
+func BuildPublish(buildName, buildNumber string, flags *utils.BuildInfoFlags, artDetails *config.ArtifactoryDetails) error {
+	artAuth := artDetails.CreateArtAuthConfig()
+	flags.SetArtifactoryDetails(artAuth)
 	buildInfoData, err := utils.ReadBuildInfoFiles(buildName, buildNumber)
 	if err != nil {
 		return err
@@ -43,10 +42,10 @@ func sendBuildInfo(buildName, buildNumber string, buildInfo *BuildInfo, flags *u
 		fmt.Println(cliutils.IndentJson(marshaledBuildInfo))
 		return nil
 	}
-	httpClientsDetails := utils.GetArtifactoryHttpClientDetails(flags.ArtDetails)
-	utils.SetContentType("application/vnd.org.jfrog.artifactory+json", &httpClientsDetails.Headers)
+	httpClientsDetails := flags.GetArtifactoryDetails().CreateArtifactoryHttpClientDetails()
+	clientutils.SetContentType("application/vnd.org.jfrog.artifactory+json", &httpClientsDetails.Headers)
 	log.Info("Deploying build info...")
-	resp, body, err := utils.PublishBuildInfo(flags.ArtDetails.Url, marshaledBuildInfo, httpClientsDetails)
+	resp, body, err := utils.PublishBuildInfo(flags.GetArtifactoryDetails().Url, marshaledBuildInfo, httpClientsDetails)
 	if err != nil {
 		return err
 	}
@@ -55,7 +54,7 @@ func sendBuildInfo(buildName, buildNumber string, buildInfo *BuildInfo, flags *u
 	}
 
 	log.Debug("Artifactory response:", resp.Status)
-	log.Info("Build info successfully deployed. Browse it in Artifactory under " + flags.ArtDetails.Url + "webapp/builds/" + buildName + "/" + buildNumber)
+	log.Info("Build info successfully deployed. Browse it in Artifactory under " + flags.GetArtifactoryDetails().Url + "webapp/builds/" + buildName + "/" + buildNumber)
 	if err = utils.RemoveBuildDir(buildName, buildNumber); err != nil {
 		return err
 	}
@@ -78,7 +77,7 @@ func createBuildInfo(buildName, buildNumber string, buildInfoRawData utils.Build
 	if len(env) != 0 {
 		buildInfo.Properties = env
 	}
-	buildInfo.artifactoryPrincipal = flags.ArtDetails.User
+	buildInfo.artifactoryPrincipal = flags.GetArtifactoryDetails().GetUser()
 	if vcs != (utils.Vcs{}) {
 		buildInfo.VcsRevision = vcs.VcsRevision
 		buildInfo.VcsUrl = vcs.VcsUrl
@@ -88,9 +87,9 @@ func createBuildInfo(buildName, buildNumber string, buildInfoRawData utils.Build
 	return buildInfo, nil
 }
 
-func prepareBuildInfoData(artifactsDataWrapper utils.BuildInfoData, includeFilter, excludeFilter filterFunc) ([]utils.ArtifactsBuildInfo, []utils.DependenciesBuildInfo, utils.BuildEnv, utils.Vcs, error) {
-	var artifacts []utils.ArtifactsBuildInfo
-	var dependencies []utils.DependenciesBuildInfo
+func prepareBuildInfoData(artifactsDataWrapper utils.BuildInfoData, includeFilter, excludeFilter filterFunc) ([]clientutils.ArtifactsBuildInfo, []clientutils.DependenciesBuildInfo, utils.BuildEnv, utils.Vcs, error) {
+	var artifacts []clientutils.ArtifactsBuildInfo
+	var dependencies []clientutils.DependenciesBuildInfo
 	var env utils.BuildEnv
 	var vcs utils.Vcs
 	env = make(map[string]string)
@@ -123,7 +122,7 @@ func prepareBuildInfoData(artifactsDataWrapper utils.BuildInfoData, includeFilte
 	return artifacts, dependencies, env, vcs, nil
 }
 
-func createModule(buildName string, artifacts []utils.ArtifactsBuildInfo, dependencies []utils.DependenciesBuildInfo) (module *Modules) {
+func createModule(buildName string, artifacts []clientutils.ArtifactsBuildInfo, dependencies []clientutils.DependenciesBuildInfo) (module *Modules) {
 	module = createDefaultModule(buildName)
 	if artifacts != nil && len(artifacts) > 0 {
 		module.Artifacts = append(module.Artifacts, artifacts...)
@@ -153,10 +152,10 @@ type CliAgent struct {
 }
 
 type Modules struct {
-	Properties   map[string][]string           `json:"properties,omitempty"`
-	Id           string                        `json:"id,omitempty"`
-	Artifacts    []utils.ArtifactsBuildInfo     `json:"artifacts,omitempty"`
-	Dependencies []utils.DependenciesBuildInfo `json:"dependencies,omitempty"`
+	Properties   map[string][]string                 `json:"properties,omitempty"`
+	Id           string                        	     `json:"id,omitempty"`
+	Artifacts    []clientutils.ArtifactsBuildInfo    `json:"artifacts,omitempty"`
+	Dependencies []clientutils.DependenciesBuildInfo `json:"dependencies,omitempty"`
 }
 
 func newBuildInfo() (buildInfo *BuildInfo) {
@@ -175,8 +174,8 @@ func createDefaultModule(buildName string) (module *Modules) {
 	module = new(Modules)
 	module.Id = buildName
 	module.Properties = make(map[string][]string)
-	module.Artifacts = make([]utils.ArtifactsBuildInfo, 0)
-	module.Dependencies = make([]utils.DependenciesBuildInfo, 0)
+	module.Artifacts = make([]clientutils.ArtifactsBuildInfo, 0)
+	module.Dependencies = make([]clientutils.DependenciesBuildInfo, 0)
 	return
 }
 

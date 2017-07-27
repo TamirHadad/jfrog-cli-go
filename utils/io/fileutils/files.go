@@ -17,6 +17,8 @@ import (
 	"github.com/jfrogdev/jfrog-cli-go/utils/cliutils/types"
 	"path"
 	"sync"
+	"path/filepath"
+	"archive/zip"
 )
 
 const SYMLINK_FILE_CONTENT = ""
@@ -382,6 +384,64 @@ func GetMd5(input io.Reader) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(hashMd5.Sum(resMd5)), nil
+}
+
+func ZipFolderFiles(source, target string) (err error) {
+	zipFile, err := os.Create(target)
+	if err != nil {
+		cliutils.CheckError(err)
+		return
+	}
+	defer func() {
+		if cerr := zipFile.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
+
+	archive := zip.NewWriter(zipFile)
+	defer func() {
+		if cerr := archive.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
+
+	filepath.Walk(source, func(path string, info os.FileInfo, err error) (currentErr error) {
+		if info.IsDir() {
+			return
+		}
+
+		if err != nil {
+			currentErr = err
+			return
+		}
+
+		header, currentErr := zip.FileInfoHeader(info)
+		if currentErr != nil {
+			cliutils.CheckError(currentErr)
+			return
+		}
+
+		header.Method = zip.Deflate
+		writer, currentErr := archive.CreateHeader(header)
+		if currentErr != nil {
+			cliutils.CheckError(currentErr)
+			return
+		}
+
+		file, currentErr := os.Open(path)
+		if currentErr != nil {
+			cliutils.CheckError(currentErr)
+			return
+		}
+		defer func() {
+			if cerr := file.Close(); cerr != nil && currentErr == nil {
+				currentErr = cerr
+			}
+		}()
+		_, currentErr = io.Copy(writer, file)
+		return
+	})
+	return
 }
 
 type FileDetails struct {

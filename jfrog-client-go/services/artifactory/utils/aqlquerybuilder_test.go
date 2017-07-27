@@ -6,7 +6,7 @@ import (
 )
 
 func TestBuildAqlSearchQueryRecursiveSimple(t *testing.T) {
-	specFile := CreateSpec("repo-local", "", "", "", true, true, false, false).Files[0]
+	specFile := File{Pattern:"repo-local", Target:"", Props:"", Build:"", Recursive:"true", Flat:"true", Regexp:"false", IncludeDirs:"false"}
 	aqlResult, _ := createAqlBodyForItem(&specFile)
 	expected := "{\"repo\": \"repo-local\",\"$or\": [{\"$and\": [{\"path\": {\"$match\": \"*\"},\"name\": {\"$match\": \"*\"}}]}]}"
 
@@ -16,7 +16,7 @@ func TestBuildAqlSearchQueryRecursiveSimple(t *testing.T) {
 }
 
 func TestBuildAqlSearchQueryRecursiveWildcard(t *testing.T) {
-	specFile := CreateSpec("repo-local2/a*b*c/dd/", "", "", "", true, true, false, false).Files[0]
+	specFile := File{Pattern:"repo-local2/a*b*c/dd/", Target:"", Props:"", Build:"", Recursive:"true", Flat:"true", Regexp:"false", IncludeDirs:"false"}
 	aqlResult, _ := createAqlBodyForItem(&specFile)
 	expected := "{\"repo\": \"repo-local2\",\"$or\": [{\"$and\": [{\"path\": {\"$match\": \"a*b*c/dd\"},\"path\": {\"$ne\": \".\"},\"name\": {\"$match\": \"*\"}}]},{\"$and\": [{\"path\": {\"$match\": \"a*b*c/dd/*\"},\"path\": {\"$ne\": \".\"},\"name\": {\"$match\": \"*\"}}]}]}"
 
@@ -26,7 +26,7 @@ func TestBuildAqlSearchQueryRecursiveWildcard(t *testing.T) {
 }
 
 func TestBuildAqlSearchQueryNonRecursiveSimple(t *testing.T) {
-	specFile := CreateSpec("repo-local", "", "", "", false, true, false, false).Files[0]
+	specFile := File{Pattern:"repo-local", Target:"", Props:"", Build:"", Recursive:"false", Flat:"true", Regexp:"false", IncludeDirs:"false"}
 	aqlResult, _ := createAqlBodyForItem(&specFile)
 	expected := "{\"repo\": \"repo-local\",\"$or\": [{\"$and\": [{\"path\": {\"$match\": \".\"},\"name\": {\"$match\": \"*\"}}]}]}"
 
@@ -36,7 +36,7 @@ func TestBuildAqlSearchQueryNonRecursiveSimple(t *testing.T) {
 }
 
 func TestBuildAqlSearchQueryNonRecursiveWildcard(t *testing.T) {
-	specFile := CreateSpec("repo-local2/a*b*c/dd/", "", "", "", false, true, false, false).Files[0]
+	specFile := File{Pattern:"repo-local2/a*b*c/dd/", Target:"", Props:"", Build:"", Recursive:"false", Flat:"true", Regexp:"false", IncludeDirs:"false"}
 	aqlResult, _ := createAqlBodyForItem(&specFile)
 	expected := "{\"repo\": \"repo-local2\",\"$or\": [{\"$and\": [{\"path\": {\"$match\": \"a*b*c/dd\"},\"path\": {\"$ne\": \".\"},\"name\": {\"$match\": \"*\"}}]}]}"
 

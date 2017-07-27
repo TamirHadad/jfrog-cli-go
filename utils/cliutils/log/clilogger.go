@@ -29,7 +29,7 @@ func createLogger() (logger *CliLogger) {
 func (logger *CliLogger) setLevel() {
 	logger.LogLevel = LogLevel["INFO"]
 	if val, ok := LogLevel[os.Getenv("JFROG_CLI_LOG_LEVEL")]; ok {
-		logger.LogLevel = val;
+		logger.LogLevel = val
 	}
 
 	logger.DebugLog = log.New(os.Stdout, "[Debug] ", 0)
@@ -85,7 +85,6 @@ func (logger CliLogger) Error(a ...interface{}) {
 		logger.ErrorLog.Println(a...)
 	}
 }
-
 
 type Log interface {
 	GetLogLevel() int

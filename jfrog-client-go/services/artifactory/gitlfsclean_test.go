@@ -1,4 +1,4 @@
-package commands
+package artifactory
 
 import (
 	"testing"
@@ -11,7 +11,7 @@ import (
 
 func TestExtractRepo(t *testing.T) {
 	pwd, err := os.Getwd()
-	testPath := filepath.Join(pwd, "..", "..", "testsdata", "gitlfs")
+	testPath := filepath.Join(pwd, "..", "..", "..", "testsdata", "gitlfs")
 	repo, err := extractRepo(testPath, "lfsConfigExample", "https://localhost:8080/artifactory", lfsConfigUrlExtractor)
 	if err != nil {
 		t.Error("Got err: ", err)
@@ -51,7 +51,7 @@ func getCliDotGitPath(t *testing.T) string {
 	if err != nil {
 		t.Error("Failed to get current dir.")
 	}
-	dotGitPath := filepath.Join(workingDir, "..", "..")
+	dotGitPath := filepath.Join(workingDir, "..", "..", "..")
 	dotGitExists, err := fileutils.IsDirExists(filepath.Join(dotGitPath, ".git"))
 	if err != nil {
 		t.Error(err)

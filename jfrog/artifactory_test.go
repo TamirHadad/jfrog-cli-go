@@ -7,8 +7,6 @@ import (
 	"github.com/jfrogdev/jfrog-cli-go/utils/io/fileutils"
 	"github.com/jfrogdev/jfrog-cli-go/utils/tests"
 	"fmt"
-	"github.com/jfrogdev/jfrog-cli-go/artifactory/utils"
-	"github.com/jfrogdev/jfrog-cli-go/utils/config"
 	"io/ioutil"
 	"errors"
 	"github.com/jfrogdev/jfrog-cli-go/utils/cliutils/log"
@@ -18,6 +16,10 @@ import (
 	"runtime"
 	"strings"
 	"encoding/json"
+	clientutils "github.com/jfrogdev/jfrog-cli-go/jfrog-client-go/services/artifactory/utils"
+	"github.com/jfrogdev/jfrog-cli-go/utils/config"
+	"github.com/jfrogdev/jfrog-cli-go/artifactory/utils"
+	"github.com/jfrogdev/jfrog-cli-go/jfrog-client-go/helpers"
 )
 
 var artifactoryCli *tests.JfrogCli
@@ -270,9 +272,15 @@ func TestArtifactorySetProperties(t *testing.T) {
 	artifactoryCli.Exec("upload", "../testsdata/a/a1.in", "jfrog-cli-tests-repo1/a.in")
 	artifactoryCli.Exec("sp", "jfrog-cli-tests-repo1/a.*", "prop=val")
 	spec, flags := getSpecAndCommonFlags(tests.GetFilePath(tests.Search))
-    resultItems, err := utils.SearchBySpecFiles(spec, flags)
-	if err != nil {
-		t.Error("Failed Searching files:", err)
+	flags.SetArtifactoryDetails(artifactoryDetails.CreateArtAuthConfig())
+	var resultItems []clientutils.AqlSearchResultItem
+	for i := 0; i < len(spec.Files); i++ {
+		currentSpec := spec.Get(i)
+		currentResultItems, err := clientutils.SearchBySpecFiles(&clientutils.SearchParamsImpl{File:currentSpec}, flags, helpers.NewDefaultJforgHttpClient())
+		if err != nil {
+			t.Error("Failed Searching files:", err)
+		}
+		resultItems = append(resultItems, currentResultItems...)
 	}
 
 	for _, item := range resultItems {
@@ -498,7 +506,7 @@ func TestArtifactoryDeleteFolderWithWildcard(t *testing.T) {
 	specFile := tests.GetFilePath(tests.MoveCopyDeleteSpec)
 	artifactoryCli.Exec("copy", "--spec=" + specFile)
 
-	artHttpDetails := utils.GetArtifactoryHttpClientDetails(artifactoryDetails)
+	artHttpDetails := artifactoryDetails.CreateArtAuthConfig().CreateArtifactoryHttpClientDetails()
 	resp, _, _, _ := httputils.SendGet(*tests.RtUrl + "api/storage/" + tests.Repo2 + "/nonflat_recursive_target/nonflat_recursive_source/a/b/", true, artHttpDetails)
 	if resp.StatusCode != 200 {
 		t.Error("Missing folder in artifactory : " + tests.Repo2 + "/nonflat_recursive_target/nonflat_recursive_source/a/b/")
@@ -518,8 +526,7 @@ func TestArtifactoryDeleteFolder(t *testing.T) {
 	initArtifactoryTest(t)
 	prepUploadFiles()
 	artifactoryCli.Exec("delete", tests.Repo1 + "/downloadTestResources", "--quiet=true")
-
-	artHttpDetails := utils.GetArtifactoryHttpClientDetails(artifactoryDetails)
+	artHttpDetails := artifactoryDetails.CreateArtAuthConfig().CreateArtifactoryHttpClientDetails()
 	resp, body, _, err := httputils.SendGet(*tests.RtUrl + "api/storage/" + tests.Repo1 + "/downloadTestResources", true, artHttpDetails)
 	if err != nil || resp.StatusCode != 404 {
 		t.Error("Coudln't delete path: " + tests.Repo1 + "/downloadTestResources/ " + string(body))
@@ -533,7 +540,7 @@ func TestArtifactoryDeleteFolderContent(t *testing.T) {
 	prepUploadFiles()
 	artifactoryCli.Exec("delete", tests.Repo1 + "/downloadTestResources/", "--quiet=true")
 
-	artHttpDetails := utils.GetArtifactoryHttpClientDetails(artifactoryDetails)
+	artHttpDetails := artifactoryDetails.CreateArtAuthConfig().CreateArtifactoryHttpClientDetails()
 	resp, body, _, err := httputils.SendGet(*tests.RtUrl + "api/storage/" + tests.Repo1 + "/downloadTestResources", true, artHttpDetails)
 	if err != nil || resp.StatusCode != 200 {
 		t.Error("downloadTestResources shouldnn't be deleted: " + tests.Repo1 + "/downloadTestResources/ " + string(body))
@@ -560,7 +567,7 @@ func TestArtifactoryDeleteFoldersBySpec(t *testing.T) {
 
 	artifactoryCli.Exec("delete", "--spec=" + tests.GetFilePath(tests.DeleteSpec), "--quiet=true")
 
-	artHttpDetails := utils.GetArtifactoryHttpClientDetails(artifactoryDetails)
+	artHttpDetails := artifactoryDetails.CreateArtAuthConfig().CreateArtifactoryHttpClientDetails()
 	resp, body, _, err := httputils.SendGet(*tests.RtUrl + "api/storage/" + tests.Repo1 + "/downloadTestResources", true, artHttpDetails)
 	if err != nil || resp.StatusCode != 404 {
 		t.Error("Coudln't delete path: " + tests.Repo1 + "/downloadTestResources/ " + string(body))
@@ -1069,7 +1076,6 @@ func TestArtifactoryMoveByBuildUsingFlags(t *testing.T) {
 	buildName, buildNumberA, buildNumberB := "cli-test-build", "10", "11"
 	specFile := tests.GetFilePath(tests.CopyByBuildSpec)
 
-
 	//upload files with buildName and buildNumber
 	specFileA := tests.GetFilePath(tests.SplittedUploadSpecA)
 	specFileB := tests.GetFilePath(tests.SplittedUploadSpecB)
@@ -1177,7 +1183,7 @@ func TestCollectGitBuildInfo(t *testing.T) {
 	//publish buildInfo
 	artifactoryCli.Exec("build-publish", buildName, buildNumber)
 
-	artHttpDetails := utils.GetArtifactoryHttpClientDetails(artifactoryDetails)
+	artHttpDetails := artifactoryDetails.CreateArtAuthConfig().CreateArtifactoryHttpClientDetails()
 	_, body, _, err := httputils.SendGet(*tests.RtUrl + "api/build/" + buildName + "/" + buildNumber, false, artHttpDetails)
 	if err != nil {
 		t.Error(err)
@@ -1198,7 +1204,7 @@ func TestCollectGitBuildInfo(t *testing.T) {
 		t.Error("Failed to get git remote url.")
 	}
 
-	gitManager := commands.NewGitManager(dotGitPath)
+	gitManager := utils.NewGitManager(dotGitPath)
 	if err = gitManager.ReadGitConfig(); err != nil {
 		t.Error("Failed to read .git config file.")
 	}
@@ -1217,7 +1223,7 @@ func TestCollectGitBuildInfo(t *testing.T) {
 
 func TestReadGitConfig(t *testing.T) {
 	dotGitPath := getCliDotGitPath(t)
-	gitManager := commands.NewGitManager(dotGitPath)
+	gitManager := utils.NewGitManager(dotGitPath)
 	err := gitManager.ReadGitConfig()
 	if err != nil {
 		t.Error("Failed to read .git config file.")
@@ -1279,16 +1285,14 @@ func prepCopyFiles() {
 	artifactoryCli.Exec("copy", "--spec=" + specFile)
 }
 
-func getPathsToDelete(specFile string) []utils.AqlSearchResultItem {
-	flags := new(commands.DeleteFlags)
-	flags.ArtDetails = artifactoryDetails
+func getPathsToDelete(specFile string) []clientutils.AqlSearchResultItem {
 	deleteSpec, _ := utils.CreateSpecFromFile(specFile, nil)
-	artifactsToDelete, _ := commands.GetPathsToDelete(deleteSpec, flags)
+	artifactsToDelete, _ := commands.GetPathsToDelete(deleteSpec, &commands.DeleteConfiguration{ArtDetails:artifactoryDetails})
 	return artifactsToDelete
 }
 
 func deleteBuild(buildName string) {
-	artHttpDetails := utils.GetArtifactoryHttpClientDetails(artifactoryDetails)
+	artHttpDetails := artifactoryDetails.CreateArtAuthConfig().CreateArtifactoryHttpClientDetails()
 	resp, body, err := httputils.SendDelete(*tests.RtUrl + "api/build/" + buildName + "?deleteAll=1", nil, artHttpDetails)
 	if err != nil {
 		log.Error(err)
@@ -1304,7 +1308,7 @@ func execCreateRepoRest(repoConfig, repoName string) error {
 	if err != nil {
 		return err
 	}
-	artHttpDetails := utils.GetArtifactoryHttpClientDetails(artifactoryDetails)
+	artHttpDetails := artifactoryDetails.CreateArtAuthConfig().CreateArtifactoryHttpClientDetails()
 	artHttpDetails.Headers = map[string]string{"Content-Type": "application/json"}
 	resp, _, err := httputils.SendPut(*tests.RtUrl + "api/repositories/" + repoName, content, artHttpDetails)
 	if err != nil {
@@ -1346,21 +1350,20 @@ func createReposIfNeeded() error {
 }
 
 func cleanArtifactory() {
-	deleteFlags := new(commands.DeleteFlags)
-	deleteFlags.ArtDetails = artifactoryDetails
+	deleteFlags := new(commands.DeleteConfiguration)
 	deleteSpec, _ := utils.CreateSpecFromFile(tests.GetFilePath(tests.DeleteSpec), nil)
+	deleteFlags.ArtDetails = artifactoryDetails
 	commands.Delete(deleteSpec, deleteFlags)
 }
 
 func searchInArtifactory(specFile string) (result []commands.SearchResult, err error) {
-	searchSpec, searchFlags := getSpecAndCommonFlags(specFile)
-	result, err = commands.Search(searchSpec, searchFlags)
+	searchSpec, _ := utils.CreateSpecFromFile(specFile, nil)
+	result, err = commands.Search(searchSpec, artifactoryDetails)
 	return
 }
 
-func getSpecAndCommonFlags(specFile string) (*utils.SpecFiles, utils.CommonFlags) {
-	searchFlags := new(utils.CommonFlagsImpl)
-	searchFlags.ArtDetails = artifactoryDetails
+func getSpecAndCommonFlags(specFile string) (*utils.SpecFiles, clientutils.CommonConf) {
+	searchFlags := new(clientutils.CommonConfImpl)
 	searchSpec, _ := utils.CreateSpecFromFile(specFile, nil)
 	return searchSpec, searchFlags
 }
@@ -1380,10 +1383,8 @@ func isExistInArtifactory(expected []string, specFile string, t *testing.T) {
 }
 
 func isExistInArtifactoryByProps(expected []string, pattern, props string, t *testing.T) {
-	searchFlags := new(utils.CommonFlagsImpl)
-	searchFlags.ArtDetails = artifactoryDetails
 	searchSpec := utils.CreateSpec(pattern, "", props, "", true, false, false, false)
-	results, err := commands.Search(searchSpec, searchFlags)
+	results, err := commands.Search(searchSpec, artifactoryDetails)
 	if err != nil {
 		t.Error(err)
 	}
@@ -1391,7 +1392,7 @@ func isExistInArtifactoryByProps(expected []string, pattern, props string, t *te
 }
 
 func isRepoExist(repoName string) bool {
-	artHttpDetails := utils.GetArtifactoryHttpClientDetails(artifactoryDetails)
+	artHttpDetails := artifactoryDetails.CreateArtAuthConfig().CreateArtifactoryHttpClientDetails()
 	resp, _, _, err := httputils.SendGet(*tests.RtUrl + tests.RepoDetailsUrl + repoName, true, artHttpDetails)
 	if err != nil {
 		os.Exit(1)

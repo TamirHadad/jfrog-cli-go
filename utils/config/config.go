@@ -6,10 +6,10 @@ import (
 	"io/ioutil"
 	"errors"
 	"os"
-	"net/http"
 	"github.com/jfrogdev/jfrog-cli-go/utils/cliutils"
 	"github.com/jfrogdev/jfrog-cli-go/utils/io/fileutils"
 	"github.com/buger/jsonparser"
+	"github.com/jfrogdev/jfrog-cli-go/jfrog-client-go/services/artifactory/utils/auth"
 )
 
 // This is the default server id. It is used when adding a server config without providing a server ID
@@ -283,8 +283,6 @@ type ArtifactoryDetails struct {
 	SshKeyPath     string            `json:"sshKeyPath,omitempty"`
 	ServerId       string            `json:"serverId,omitempty"`
 	IsDefault      bool              `json:"isDefault,omitempty"`
-	SshAuthHeaders map[string]string `json:"-"`
-	Transport      *http.Transport   `json:"-"`
 }
 
 type BintrayDetails struct {
@@ -329,6 +327,16 @@ func (artifactoryDetails *ArtifactoryDetails) GetPassword() string {
 	return artifactoryDetails.Password
 }
 
+func (artifactoryDetails *ArtifactoryDetails) CreateArtAuthConfig() *auth.ArtifactoryAuthConfiguration {
+	artAuth := new(auth.ArtifactoryAuthConfiguration)
+	artAuth.Url = artifactoryDetails.Url
+	artAuth.SshKeysPath = artifactoryDetails.SshKeyPath
+	artAuth.ApiKey = artifactoryDetails.ApiKey
+	artAuth.User = artifactoryDetails.User
+	artAuth.Password = artifactoryDetails.Password
+	return artAuth
+}
+
 func (missionControlDetails *MissionControlDetails) SetUser(username string) {
 	missionControlDetails.User = username
 }
@@ -344,3 +352,4 @@ func (missionControlDetails *MissionControlDetails) GetUser() string {
 func (missionControlDetails *MissionControlDetails) GetPassword() string {
 	return missionControlDetails.Password
 }
+

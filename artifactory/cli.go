@@ -29,6 +29,8 @@ import (
 	configdocs "github.com/jfrogdev/jfrog-cli-go/docs/artifactory/config"
 	"github.com/jfrogdev/jfrog-cli-go/utils/cliutils/log"
 	"github.com/jfrogdev/jfrog-cli-go/docs/artifactory/setprops"
+	"github.com/jfrogdev/jfrog-cli-go/jfrog-client-go/services/artifactory"
+	clientutils "github.com/jfrogdev/jfrog-cli-go/jfrog-client-go/services/artifactory/utils"
 )
 
 func GetCommands() []cli.Command {
@@ -128,18 +130,6 @@ func GetCommands() []cli.Command {
 			},
 		},
 		{
-			Name:      "set-props",
-			Flags:     getSetPropertiesFlags(),
-			Aliases:   []string{"sp"},
-			Usage:     setprops.Description,
-			HelpName:  common.CreateUsage("rt set-props", setprops.Description, setprops.Usage),
-			UsageText: setprops.Arguments,
-			ArgsUsage: common.CreateEnvVars(),
-			Action: func(c *cli.Context) {
-				setPropsCmd(c)
-			},
-		},
-		{
 			Name:      "build-publish",
 			Flags:     getBuildPublishFlags(),
 			Aliases:   []string{"bp"},
@@ -221,6 +211,18 @@ func GetCommands() []cli.Command {
 			ArgsUsage: common.CreateEnvVars(),
 			Action: func(c *cli.Context) {
 				gitLfsCleanCmd(c)
+			},
+		},
+		{
+			Name:      "set-props",
+			Flags:     getSetPropertiesFlags(),
+			Aliases:   []string{"sp"},
+			Usage:     setprops.Description,
+			HelpName:  common.CreateUsage("rt set-props", setprops.Description, setprops.Usage),
+			UsageText: setprops.Arguments,
+			ArgsUsage: common.CreateEnvVars(),
+			Action: func(c *cli.Context) {
+				setPropsCmd(c)
 			},
 		},
 	}
@@ -861,9 +863,9 @@ func moveCmd(c *cli.Context) {
 		moveSpec = createDefaultMoveSpec(c)
 	}
 
-	flags, err := createMoveFlags(c)
+	artDetails, err := createArtifactoryDetails(c, true)
 	cliutils.ExitOnErr(err)
-	err = commands.Move(moveSpec, flags)
+	err = commands.Move(moveSpec, artDetails)
 	cliutils.ExitOnErr(err)
 }
 
@@ -884,9 +886,9 @@ func copyCmd(c *cli.Context) {
 		copySpec = createDefaultMoveSpec(c)
 	}
 
-	flags, err := createMoveFlags(c)
+	artDetails, err := createArtifactoryDetails(c, true)
 	cliutils.ExitOnErr(err)
-	err = commands.Copy(copySpec, flags)
+	err = commands.Copy(copySpec, artDetails)
 	cliutils.ExitOnErr(err)
 }
 
@@ -918,7 +920,7 @@ func deleteCmd(c *cli.Context) {
 	}
 }
 
-func deleteIfConfirmed(deleteSpec *utils.SpecFiles, flags *commands.DeleteFlags) error {
+func deleteIfConfirmed(deleteSpec *utils.SpecFiles, flags *commands.DeleteConfiguration) error {
 	pathsToDelete, err := commands.GetPathsToDelete(deleteSpec, flags)
 	if err != nil {
 		return err
@@ -953,9 +955,9 @@ func searchCmd(c *cli.Context) {
 		searchSpec = createDefaultSearchSpec(c)
 	}
 
-	flags, err := createCommonFlags(c)
+	artDetails, err := createArtifactoryDetails(c, true)
 	cliutils.ExitOnErr(err)
-	SearchResult, err := commands.Search(searchSpec, flags)
+	SearchResult, err := commands.Search(searchSpec, artDetails)
 	cliutils.ExitOnErr(err)
 	result, err := json.Marshal(SearchResult)
 	cliutils.ExitOnErr(err)
@@ -969,17 +971,17 @@ func setPropsCmd(c *cli.Context) {
 	}
 	setPropertiesSpec := createDefaultSetPropertiesSpec(c)
 	properties := c.Args()[1]
-	flags, err := createCommonFlags(c)
+	artDetails, err := createArtifactoryDetailsByFlags(c, true)
 	cliutils.ExitOnErr(err)
-	err = commands.SetProps(setPropertiesSpec, flags, properties)
+	err = commands.SetProps(setPropertiesSpec, properties, artDetails)
 	cliutils.ExitOnErr(err)
 }
 
 func buildPublishCmd(c *cli.Context) {
 	validateBuildInfoArgument(c)
-	buildInfoFlags, err := createBuildInfoFlags(c)
+	buildInfoFlags, artDetails, err := createBuildInfoFlags(c)
 	cliutils.ExitOnErr(err)
-	err = commands.BuildPublish(c.Args().Get(0), c.Args().Get(1), buildInfoFlags)
+	err = commands.BuildPublish(c.Args().Get(0), c.Args().Get(1), buildInfoFlags, artDetails)
 	cliutils.ExitOnErr(err)
 }
 
@@ -1015,7 +1017,11 @@ func buildPromoteCmd(c *cli.Context) {
 	if err != nil {
 		cliutils.ExitOnErr(err)
 	}
-	err = commands.BuildPromote(c.Args().Get(0), c.Args().Get(1), c.Args().Get(2), buildPromoteFlags)
+
+	buildPromoteFlags.BuildName = c.Args().Get(0)
+	buildPromoteFlags.BuildNumber = c.Args().Get(1)
+	buildPromoteFlags.TargetRepo = c.Args().Get(2)
+	err = commands.BuildPromote(buildPromoteFlags)
 	cliutils.ExitOnErr(err)
 }
 
@@ -1027,7 +1033,11 @@ func buildDistributeCmd(c *cli.Context) {
 	if err != nil {
 		cliutils.ExitOnErr(err)
 	}
-	err = commands.BuildDistribute(c.Args().Get(0), c.Args().Get(1), c.Args().Get(2), buildDistributeFlags)
+
+	buildDistributeFlags.BuildName = c.Args().Get(0)
+	buildDistributeFlags.BuildNumber = c.Args().Get(1)
+	buildDistributeFlags.TargetRepo = c.Args().Get(2)
+	err = commands.BuildDistribute(buildDistributeFlags)
 	cliutils.ExitOnErr(err)
 }
 
@@ -1041,20 +1051,21 @@ func gitLfsCleanCmd(c *cli.Context) {
 	}
 	gitLfsCleanFlags, err := createGitLfsCleanFlags(c)
 	cliutils.ExitOnErr(err)
-	filesToDelete, flags, err := commands.PrepareGitLfsClean(dotGitPath, gitLfsCleanFlags)
+	gitLfsCleanFlags.GitLfsCleanParamsImpl.GitPath = dotGitPath
+	filesToDelete, err := commands.PrepareGitLfsClean(gitLfsCleanFlags)
 	cliutils.ExitOnErr(err)
 	if len(filesToDelete) < 1 {
 		return
 	}
-	if flags.Quiet {
-		err = commands.DeleteLfsFilesFromArtifactory(filesToDelete, flags)
+	if gitLfsCleanFlags.Quiet {
+		err = commands.DeleteLfsFilesFromArtifactory(filesToDelete, gitLfsCleanFlags)
 		cliutils.ExitOnErr(err)
 		return
 	}
-	interactiveDeleteLfsFiles(filesToDelete, flags)
+	interactiveDeleteLfsFiles(filesToDelete, gitLfsCleanFlags)
 }
 
-func interactiveDeleteLfsFiles(filesToDelete []utils.AqlSearchResultItem, flags *commands.GitLfsCleanFlags) {
+func interactiveDeleteLfsFiles(filesToDelete []clientutils.AqlSearchResultItem, flags *commands.GitLfsCleanConfiguration) {
 	for _, v := range filesToDelete {
 		fmt.Println("  " + v.Name)
 	}
@@ -1090,9 +1101,9 @@ func offerConfig(c *cli.Context) (details *config.ArtifactoryDetails, err error)
 		return
 	}
 	msg := "The CLI commands require the Artifactory URL and authentication details\n" +
-			"Configuring JFrog CLI with these parameters now will save you having to include them as command options.\n" +
-			"You can also configure these parameters later using the 'config' command.\n" +
-			"Configure now?"
+		"Configuring JFrog CLI with these parameters now will save you having to include them as command options.\n" +
+		"You can also configure these parameters later using the 'config' command.\n" +
+		"Configure now?"
 	confirmed := cliutils.InteractiveConfirm(msg)
 	if !confirmed {
 		config.SaveArtifactoryConf(make([]*config.ArtifactoryDetails, 0))
@@ -1191,13 +1202,6 @@ func getMoveSpec(c *cli.Context) (searchSpec *utils.SpecFiles, err error) {
 	return
 }
 
-func createMoveFlags(c *cli.Context) (moveFlags *utils.MoveFlags, err error) {
-	moveFlags = new(utils.MoveFlags)
-	moveFlags.DryRun = c.Bool("dry-run")
-	moveFlags.ArtDetails, err = createArtifactoryDetailsByFlags(c, true)
-	return
-}
-
 func createDefaultDeleteSpec(c *cli.Context) *utils.SpecFiles {
 	pattern := c.Args().Get(0)
 	props := c.String("props")
@@ -1222,14 +1226,12 @@ func getDeleteSpec(c *cli.Context) (searchSpec *utils.SpecFiles, err error) {
 	return
 }
 
-func createDeleteFlags(c *cli.Context) (deleteFlags *commands.DeleteFlags, err error) {
-	deleteFlags = new(commands.DeleteFlags)
-	deleteFlags.ArtDetails, err = createArtifactoryDetailsByFlags(c, true)
-	if err != nil {
-		return
-	}
+func createDeleteFlags(c *cli.Context) (*commands.DeleteConfiguration, error) {
+	deleteFlags := new(commands.DeleteConfiguration)
 	deleteFlags.DryRun = c.Bool("dry-run")
-	return
+	artDetails, err := createArtifactoryDetailsByFlags(c, true)
+	deleteFlags.ArtDetails = artDetails
+	return deleteFlags, err
 }
 
 func createDefaultSearchSpec(c *cli.Context) *utils.SpecFiles {
@@ -1265,20 +1267,9 @@ func getSearchSpec(c *cli.Context) (searchSpec *utils.SpecFiles, err error) {
 	return
 }
 
-func getSetPropertiesSpec(c *cli.Context) (*utils.SpecFiles, error) {
-	return getSearchSpec(c)
-}
-
-func createCommonFlags(c *cli.Context) (utils.CommonFlags, error) {
-	var err error
-	flags := new(utils.CommonFlagsImpl)
-	flags.ArtDetails, err = createArtifactoryDetailsByFlags(c, true)
-	return flags, err
-}
-
-func createBuildInfoFlags(c *cli.Context) (flags *utils.BuildInfoFlags, err error) {
+func createBuildInfoFlags(c *cli.Context) (flags *utils.BuildInfoFlags, artDetails *config.ArtifactoryDetails, err error) {
 	flags = new(utils.BuildInfoFlags)
-	flags.ArtDetails, err = createArtifactoryDetailsByFlags(c, true)
+	artDetails, err = createArtifactoryDetailsByFlags(c, true)
 	flags.DryRun = c.Bool("dry-run")
 	flags.EnvInclude = c.String("env-include")
 	flags.EnvExclude = c.String("env-exclude")
@@ -1291,43 +1282,49 @@ func createBuildInfoFlags(c *cli.Context) (flags *utils.BuildInfoFlags, err erro
 	return
 }
 
-func createBuildPromoteFlags(c *cli.Context) (promoteFlags *commands.BuildPromotionFlags, err error) {
-	promoteFlags = new(commands.BuildPromotionFlags)
-	promoteFlags.Comment = c.String("comment")
-	promoteFlags.SourceRepo = c.String("source-repo")
-	promoteFlags.Status = c.String("status")
-	promoteFlags.IncludeDependencies = c.Bool("include-dependencies")
-	promoteFlags.Copy = c.Bool("copy")
+func createBuildPromoteFlags(c *cli.Context) (*commands.BuildPromotionConfiguration, error) {
+	promotionParamsImpl := new(artifactory.PromotionParamsImpl)
+	promotionParamsImpl.Comment = c.String("comment")
+	promotionParamsImpl.SourceRepo = c.String("source-repo")
+	promotionParamsImpl.Status = c.String("status")
+	promotionParamsImpl.IncludeDependencies = c.Bool("include-dependencies")
+	promotionParamsImpl.Copy = c.Bool("copy")
+	promoteFlags := new(commands.BuildPromotionConfiguration)
 	promoteFlags.DryRun = c.Bool("dry-run")
-
-	promoteFlags.ArtDetails, err = createArtifactoryDetailsByFlags(c, true)
-	return
+	promoteFlags.PromotionParamsImpl = promotionParamsImpl
+	artDetails, err := createArtifactoryDetailsByFlags(c, true)
+	promoteFlags.ArtDetails = artDetails
+	return promoteFlags, err
 }
 
-func createBuildDistributionFlags(c *cli.Context) (distributeFlags *commands.BuildDistributionFlags, err error) {
-	distributeFlags = new(commands.BuildDistributionFlags)
-	distributeFlags.Publish = cliutils.GetBoolFlagValue(c, "publish", true)
-	distributeFlags.OverrideExistingFiles = c.Bool("override")
-	distributeFlags.GpgPassphrase = c.String("passphrase")
-	distributeFlags.Async = c.Bool("async")
-	distributeFlags.SourceRepos = c.String("source-repos")
+func createBuildDistributionFlags(c *cli.Context) (*commands.BuildDistributionConfiguration, error) {
+	distributeParamsImpl := new(artifactory.BuildDistributionParamsImpl)
+	distributeParamsImpl.Publish = cliutils.GetBoolFlagValue(c, "publish", true)
+	distributeParamsImpl.OverrideExistingFiles = c.Bool("override")
+	distributeParamsImpl.GpgPassphrase = c.String("passphrase")
+	distributeParamsImpl.Async = c.Bool("async")
+	distributeParamsImpl.SourceRepos = c.String("source-repos")
+	distributeFlags := new(commands.BuildDistributionConfiguration)
 	distributeFlags.DryRun = c.Bool("dry-run")
-
-	distributeFlags.ArtDetails, err = createArtifactoryDetailsByFlags(c, true)
-	return
+	distributeFlags.BuildDistributionParamsImpl = distributeParamsImpl
+	artDetails, err := createArtifactoryDetailsByFlags(c, true)
+	distributeFlags.ArtDetails = artDetails
+	return distributeFlags, err
 }
 
-func createGitLfsCleanFlags(c *cli.Context) (gitLfsCleanFlags *commands.GitLfsCleanFlags, err error) {
-	gitLfsCleanFlags = new(commands.GitLfsCleanFlags)
-	gitLfsCleanFlags.Refs = c.String("refs")
-	if len(gitLfsCleanFlags.Refs) == 0 {
-		gitLfsCleanFlags.Refs = "refs/remotes/*"
+func createGitLfsCleanFlags(c *cli.Context) (*commands.GitLfsCleanConfiguration, error) {
+	gitLfsCleanFlags := new(commands.GitLfsCleanConfiguration)
+	refs := c.String("refs")
+	if len(refs) == 0 {
+		refs = "refs/remotes/*"
 	}
-	gitLfsCleanFlags.Repo = c.String("repo")
+	repo := c.String("repo")
+	gitLfsCleanFlags.GitLfsCleanParamsImpl = &artifactory.GitLfsCleanParamsImpl{Repo:repo, Refs:refs}
 	gitLfsCleanFlags.Quiet = c.Bool("quiet")
 	gitLfsCleanFlags.DryRun = c.Bool("dry-run")
-	gitLfsCleanFlags.ArtDetails, err = createArtifactoryDetailsByFlags(c, true)
-	return
+	artDetails, err := createArtifactoryDetailsByFlags(c, true)
+	gitLfsCleanFlags.ArtDetails = artDetails
+	return gitLfsCleanFlags, err
 }
 
 func createDefaultDownloadSpec(c *cli.Context) *utils.SpecFiles {
@@ -1360,8 +1357,8 @@ func getDownloadSpec(c *cli.Context) (downloadSpec *utils.SpecFiles, err error) 
 	return
 }
 
-func createDownloadFlags(c *cli.Context) (downloadFlags *commands.DownloadFlags, err error) {
-	downloadFlags = new(commands.DownloadFlags)
+func createDownloadFlags(c *cli.Context) (*commands.DownloadConfiguration, error) {
+	downloadFlags := new(commands.DownloadConfiguration)
 	downloadFlags.DryRun = c.Bool("dry-run")
 	downloadFlags.ValidateSymlink = c.Bool("validate-symlinks")
 	downloadFlags.MinSplitSize = getMinSplit(c)
@@ -1373,8 +1370,9 @@ func createDownloadFlags(c *cli.Context) (downloadFlags *commands.DownloadFlags,
 	if (downloadFlags.BuildName == "" && downloadFlags.BuildNumber != "") || (downloadFlags.BuildName != "" && downloadFlags.BuildNumber == "") {
 		cliutils.Exit(cliutils.ExitCodeError, "The build-name and build-number options cannot be sent separately.")
 	}
-	downloadFlags.ArtDetails, err = createArtifactoryDetailsByFlags(c, true)
-	return
+	artDetails, err := createArtifactoryDetailsByFlags(c, true)
+	downloadFlags.ArtDetails = artDetails
+	return downloadFlags, err
 }
 
 func createDefaultUploadSpec(c *cli.Context) *utils.SpecFiles {
@@ -1424,20 +1422,23 @@ func fixWinDownloadFilesPath(uploadSpec *utils.SpecFiles) {
 	}
 }
 
-func createUploadFlags(c *cli.Context) (uploadFlags *commands.UploadFlags, err error) {
-	uploadFlags = new(commands.UploadFlags)
+func createUploadFlags(c *cli.Context) (*commands.UploadConfiguration, error) {
+	uploadFlags := new(commands.UploadConfiguration)
+	buildName := getBuildName(c)
+	buildNumber := getBuildNumber(c)
+	if (buildName == "" && buildNumber != "") || (buildName != "" && buildNumber == "") {
+		cliutils.Exit(cliutils.ExitCodeError, "The build-name and build-number options cannot be sent separately.")
+	}
+	uploadFlags.BuildName = buildName
+	uploadFlags.BuildNumber = buildNumber
 	uploadFlags.DryRun = c.Bool("dry-run")
 	uploadFlags.ExplodeArchive = c.Bool("explode")
 	uploadFlags.Symlink = c.Bool("symlinks")
 	uploadFlags.Threads = getThreadsCount(c)
-	uploadFlags.BuildName = getBuildName(c)
-	uploadFlags.BuildNumber = getBuildNumber(c)
-	if (uploadFlags.BuildName == "" && uploadFlags.BuildNumber != "") || (uploadFlags.BuildName != "" && uploadFlags.BuildNumber == "") {
-		cliutils.Exit(cliutils.ExitCodeError, "The build-name and build-number options cannot be sent separately.")
-	}
 	uploadFlags.Deb = getDebFlag(c)
-	uploadFlags.ArtDetails, err = createArtifactoryDetailsByFlags(c, true)
-	return
+	artDetails, err := createArtifactoryDetailsByFlags(c, true)
+	uploadFlags.ArtDetails = artDetails
+	return uploadFlags, err
 }
 
 func createConfigFlags(c *cli.Context) (configFlag *commands.ConfigFlags, err error) {

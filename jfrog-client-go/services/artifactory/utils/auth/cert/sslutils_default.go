@@ -1,11 +1,11 @@
 // +build !windows
 
-package utils
+package cert
 
 import (
 	"crypto/x509"
 )
 
-func LoadSystemRoots() (*x509.CertPool, error) {
+func loadSystemRoots() (*x509.CertPool, error) {
 	return x509.SystemCertPool()
 }

@@ -5,16 +5,14 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"os"
-	"archive/zip"
-	"io"
 	"errors"
-	"path/filepath"
 	"strings"
 	"strconv"
 	"fmt"
 	"github.com/jfrogdev/jfrog-cli-go/utils/cliutils"
 	"github.com/jfrogdev/jfrog-cli-go/utils/cliutils/log"
 	"github.com/jfrogdev/jfrog-cli-go/errors/httperrors"
+	"github.com/jfrogdev/jfrog-cli-go/utils/io/fileutils"
 )
 
 const VULNERABILITY = "__vuln"
@@ -124,7 +122,7 @@ func saveData(xrayTmpDir, filesPrefix, zipSuffix string, urlsList []string) erro
 		}
 	}
 	log.Info("Zipping files.")
-	err = zipFolderFiles(dataDir, filesPrefix + zipSuffix + ".zip")
+	err = fileutils.ZipFolderFiles(dataDir, filesPrefix + zipSuffix + ".zip")
 	if err != nil {
 		return err
 	}
@@ -165,64 +163,6 @@ func getFilesList(flags *OfflineUpdatesFlags) ([]string, []string, int64, error)
 		}
 	}
 	return vulnerabilities, components, urls.Last_update, nil
-}
-
-func zipFolderFiles(source, target string) (err error) {
-	zipfile, err := os.Create(target)
-	if err != nil {
-		cliutils.CheckError(err)
-		return
-	}
-	defer func() {
-		if cerr := zipfile.Close(); cerr != nil && err == nil {
-			err = cerr
-		}
-	}()
-
-	archive := zip.NewWriter(zipfile)
-	defer func() {
-		if cerr := archive.Close(); cerr != nil && err == nil {
-			err = cerr
-		}
-	}()
-
-	filepath.Walk(source, func(path string, info os.FileInfo, err error) (currentErr error) {
-		if info.IsDir() {
-			return
-		}
-
-		if err != nil {
-			currentErr = err
-			return
-		}
-
-		header, currentErr := zip.FileInfoHeader(info)
-		if currentErr != nil {
-			cliutils.CheckError(currentErr)
-			return
-		}
-
-		header.Method = zip.Deflate
-		writer, currentErr := archive.CreateHeader(header)
-		if currentErr != nil {
-			cliutils.CheckError(currentErr)
-			return
-		}
-
-		file, currentErr := os.Open(path)
-		if currentErr != nil {
-			cliutils.CheckError(currentErr)
-			return
-		}
-		defer func() {
-			if cerr := file.Close(); cerr != nil && currentErr == nil {
-				currentErr = cerr
-			}
-		}()
-		_, currentErr = io.Copy(writer, file)
-		return
-	})
-	return
 }
 
 type OfflineUpdatesFlags struct {

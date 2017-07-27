@@ -1,56 +1,25 @@
 package utils
 
 import (
-	"encoding/json"
 	"github.com/jfrogdev/jfrog-cli-go/utils/io/fileutils"
 	"github.com/jfrogdev/jfrog-cli-go/utils/cliutils"
-	"strings"
+	"encoding/json"
 	"strconv"
-	"github.com/jfrogdev/jfrog-cli-go/utils/cliutils/log"
-	"bytes"
+	"github.com/jfrogdev/jfrog-cli-go/jfrog-client-go/services/artifactory/utils"
 	"fmt"
+	"bytes"
+	"github.com/jfrogdev/jfrog-cli-go/utils/cliutils/log"
 )
-
-const (
-	WILDCARD SpecType = "wildcard"
-	SIMPLE SpecType = "simple"
-	AQL SpecType = "aql"
-)
-
-type Aql struct {
-	ItemsFind string `json:"items.find"`
-}
-
-type File struct {
-	Pattern     string
-	Target      string
-	Props       string
-	Recursive   string
-	Flat        string
-	Regexp      string
-	Aql         Aql
-	Build       string
-	IncludeDirs string
-}
 
 type SpecFiles struct {
-	Files []File
+	Files []utils.File
 }
 
-func (spec *SpecFiles) Get(index int) *File {
+func (spec *SpecFiles) Get(index int) *utils.File {
 	if index < len(spec.Files) {
 		return &spec.Files[index]
 	}
-	return new(File)
-}
-
-func (aql *Aql) UnmarshalJSON(value []byte) error {
-	str := string(value)
-	first := strings.Index(str[strings.Index(str, "{") + 1 :], "{")
-	last := strings.LastIndex(str, "}")
-
-	aql.ItemsFind = cliutils.StripChars(str[first:last], "\n\t ")
-	return nil
+	return new(utils.File)
 }
 
 func CreateSpecFromFile(specFilePath string, specVars map[string]string) (spec *SpecFiles, err error) {
@@ -84,7 +53,7 @@ func replaceSpecVars(content []byte, specVars map[string]string) []byte {
 
 func CreateSpec(pattern, target, props, build string, recursive, flat, regexp, includeDirs bool) (spec *SpecFiles) {
 	spec = &SpecFiles{
-		Files: []File{
+		Files: []utils.File{
 			{
 				Pattern:     pattern,
 				Target:      target,
@@ -99,21 +68,3 @@ func CreateSpec(pattern, target, props, build string, recursive, flat, regexp, i
 	}
 	return spec
 }
-
-func (file File) GetSpecType() (specType SpecType) {
-	switch {
-	case file.Pattern != "" && (IsWildcardPattern(file.Pattern) || file.Build != ""):
-		specType = WILDCARD
-	case file.Pattern != "":
-		specType = SIMPLE
-	case file.Aql.ItemsFind != "" :
-		specType = AQL
-	}
-	return specType
-}
-
-func (file File) IsIncludeDirs() bool {
-	return file.IncludeDirs == "true"
-}
-
-type SpecType string

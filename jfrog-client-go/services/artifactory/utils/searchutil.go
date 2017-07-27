@@ -3,59 +3,69 @@ package utils
 import (
 	"github.com/jfrogdev/jfrog-cli-go/utils/cliutils"
 	"encoding/json"
-	"github.com/jfrogdev/jfrog-cli-go/utils/io/httputils"
-	"github.com/jfrogdev/jfrog-cli-go/utils/config"
 	"strings"
 	"strconv"
 	"github.com/jfrogdev/jfrog-cli-go/utils/cliutils/log"
 	"errors"
 	"sort"
+	"github.com/jfrogdev/jfrog-cli-go/jfrog-client-go/helpers"
 )
 
-func SearchBySpecFiles(searchSpec *SpecFiles, flags CommonFlags) ([]AqlSearchResultItem, error) {
+type SearchParams interface {
+	FileGetter
+	GetFile() *File
+}
+
+type SearchParamsImpl struct {
+	*File
+}
+
+func (s *SearchParamsImpl) GetFile() *File {
+	return s.File
+}
+
+func SearchBySpecFiles(searchParams SearchParams, flags CommonConf, client *helpers.JfrogHttpClient) ([]AqlSearchResultItem, error) {
 	var resultItems []AqlSearchResultItem
 	var itemsFound []AqlSearchResultItem
 	var err error
 
-	for i := 0; i < len(searchSpec.Files); i++ {
-		switch searchSpec.Get(i).GetSpecType() {
+		switch searchParams.GetSpecType() {
 		case WILDCARD, SIMPLE:
-			itemsFound, e := AqlSearchDefaultReturnFields(searchSpec.Get(i), flags)
+			itemsFound, e := AqlSearchDefaultReturnFields(searchParams.GetFile(), flags, client)
 			if e != nil {
 				err = e
 				return resultItems, err
 			}
 			resultItems = append(resultItems, itemsFound...)
 		case AQL:
-			itemsFound, err = AqlSearchBySpec(searchSpec.Get(i), flags)
+			itemsFound, err = AqlSearchBySpec(searchParams.GetFile(), flags, client)
 			if err != nil {
 				return resultItems, err
 			}
 			resultItems = append(resultItems, itemsFound...)
 		}
-	}
 	return resultItems, err
 }
 
-func AqlSearchDefaultReturnFields(specFile *File, flags AqlSearchFlag) ([]AqlSearchResultItem, error) {
+func AqlSearchDefaultReturnFields(specFile *File, flags CommonConf, client *helpers.JfrogHttpClient) ([]AqlSearchResultItem, error) {
 	query, err := createAqlBodyForItem(specFile)
 	if err != nil {
 		return nil, err
 	}
 	specFile.Aql = Aql{ItemsFind:query}
-	return AqlSearchBySpec(specFile, flags)
+	return AqlSearchBySpec(specFile, flags, client)
 }
 
-func AqlSearchBySpec(specFile *File, flags AqlSearchFlag) ([]AqlSearchResultItem, error) {
+func AqlSearchBySpec(specFile *File, flags CommonConf, client *helpers.JfrogHttpClient) ([]AqlSearchResultItem, error) {
 	aqlBody := specFile.Aql.ItemsFind
 	query := "items.find(" + aqlBody + ").include(" + strings.Join(GetDefaultQueryReturnFields(), ",") + ")"
-	results, err := aqlSearch(query, flags)
+	results, err := aqlSearch(query, flags, client)
 	if err != nil {
 		return nil, err
 	}
 	buildIdentifier := specFile.Build
 	if buildIdentifier != "" && len(results) > 0 {
-		results, err = filterSearchByBuild(buildIdentifier, results, flags)
+		results, err = filterSearchByBuild(buildIdentifier, results, flags, client)
 		if err != nil {
 			return nil, err
 		}
@@ -63,8 +73,8 @@ func AqlSearchBySpec(specFile *File, flags AqlSearchFlag) ([]AqlSearchResultItem
 	return results, err
 }
 
-func aqlSearch(aqlQuery string, flags AqlSearchFlag) ([]AqlSearchResultItem, error) {
-	json, err := execAqlSearch(aqlQuery, flags)
+func aqlSearch(aqlQuery string, flags CommonConf, client *helpers.JfrogHttpClient) ([]AqlSearchResultItem, error) {
+	json, err := execAqlSearch(aqlQuery, flags, client)
 	if err != nil {
 		return nil, err
 	}
@@ -73,12 +83,12 @@ func aqlSearch(aqlQuery string, flags AqlSearchFlag) ([]AqlSearchResultItem, err
 	return resultItems, err
 }
 
-func execAqlSearch(aqlQuery string, flags AqlSearchFlag) ([]byte, error) {
+func execAqlSearch(aqlQuery string, flags CommonConf, client *helpers.JfrogHttpClient) ([]byte, error) {
 	aqlUrl := flags.GetArtifactoryDetails().Url + "api/search/aql"
 	log.Debug("Searching Artifactory using AQL query: ", aqlQuery)
 
-	httpClientsDetails := GetArtifactoryHttpClientDetails(flags.GetArtifactoryDetails())
-	resp, body, err := httputils.SendPost(aqlUrl, []byte(aqlQuery), httpClientsDetails)
+	httpClientsDetails := flags.GetArtifactoryDetails().CreateArtifactoryHttpClientDetails()
+	resp, body, err := client.SendPost(aqlUrl, []byte(aqlQuery), httpClientsDetails)
 	if err != nil {
 		return nil, err
 	}
@@ -154,10 +164,6 @@ func addSeparator(str1, separator, str2 string) string {
 	}
 
 	return str1 + separator + str2
-}
-
-type AqlSearchFlag interface {
-	GetArtifactoryDetails() *config.ArtifactoryDetails
 }
 
 type AqlSearchResultItemFilter func(map[string]AqlSearchResultItem, []string) []AqlSearchResultItem

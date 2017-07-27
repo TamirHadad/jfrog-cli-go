@@ -20,6 +20,5 @@ func (httpClientDetails HttpClientDetails) Clone() *HttpClientDetails {
 		User:      httpClientDetails.User,
 		Password:  httpClientDetails.Password,
 		ApiKey:    httpClientDetails.ApiKey,
-		Headers:   headers,
-		Transport: httpClientDetails.Transport}
+		Headers:   headers}
 }

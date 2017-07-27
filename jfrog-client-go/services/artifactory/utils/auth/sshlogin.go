@@ -1,10 +1,9 @@
-package utils
+package auth
 
 import (
 	"bytes"
 	"encoding/json"
 	"github.com/jfrogdev/jfrog-cli-go/utils/cliutils"
-	"github.com/jfrogdev/jfrog-cli-go/utils/config"
 	"golang.org/x/crypto/ssh"
 	"errors"
 	"io"
@@ -14,29 +13,29 @@ import (
 	"github.com/jfrogdev/jfrog-cli-go/utils/cliutils/log"
 )
 
-func SshAuthentication(details *config.ArtifactoryDetails) error {
-	_, host, port, err := parseUrl(details.Url)
+func sshAuthentication(url, sshKeyPath string) (string, map[string]string, error) {
+	_, host, port, err := parseUrl(url)
 	if err != nil {
-	    return err
+	    return "", nil, err
 	}
 
 	log.Info("Performing SSH authentication...")
-	if details.SshKeyPath == "" {
+	if sshKeyPath == "" {
 		err := cliutils.CheckError(errors.New("Cannot invoke the SshAuthentication function with no SSH key path. "))
         if err != nil {
-            return err
+			return "", nil, err
         }
 	}
 
-	buffer, err := ioutil.ReadFile(details.SshKeyPath)
+	buffer, err := ioutil.ReadFile(sshKeyPath)
 	err = cliutils.CheckError(err)
 	if err != nil {
-	    return err
+		return "", nil, err
 	}
 	key, err := ssh.ParsePrivateKey(buffer)
 	err = cliutils.CheckError(err)
 	if err != nil {
-	    return err
+		return "", nil, err
 	}
 	sshConfig := &ssh.ClientConfig{
 		User: "admin",
@@ -50,21 +49,21 @@ func SshAuthentication(details *config.ArtifactoryDetails) error {
 	connection, err := ssh.Dial("tcp", hostAndPort, sshConfig)
 	err = cliutils.CheckError(err)
 	if err != nil {
-	    return err
+		return "", nil, err
 	}
 	defer connection.Close()
 
 	session, err := connection.NewSession()
 	err = cliutils.CheckError(err)
 	if err != nil {
-	    return err
+		return "", nil, err
 	}
 	defer session.Close()
 
 	stdout, err := session.StdoutPipe()
 	err = cliutils.CheckError(err)
 	if err != nil {
-	    return err
+		return "", nil, err
 	}
 
 	var buf bytes.Buffer
@@ -76,12 +75,12 @@ func SshAuthentication(details *config.ArtifactoryDetails) error {
 	err = json.Unmarshal(buf.Bytes(), &result)
 	err = cliutils.CheckError(err)
 	if err != nil {
-	    return err
+		return "", nil, err
 	}
-	details.Url = cliutils.AddTrailingSlashIfNeeded(result.Href)
-	details.SshAuthHeaders = result.Headers
+	url = cliutils.AddTrailingSlashIfNeeded(result.Href)
+	sshAuthHeaders := result.Headers
 	log.Info("SSH authentication successful.")
-	return nil
+	return url, sshAuthHeaders, nil
 }
 
 func parseUrl(url string) (protocol, host string, port int, err error) {

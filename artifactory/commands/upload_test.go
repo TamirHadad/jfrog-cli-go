@@ -6,20 +6,22 @@ import (
 	"testing"
 	"github.com/jfrogdev/jfrog-cli-go/utils/config"
 	"github.com/jfrogdev/jfrog-cli-go/artifactory/utils"
+	"github.com/jfrogdev/jfrog-cli-go/jfrog-client-go/services/artifactory"
 )
 
 func TestSingleFileUpload(t *testing.T) {
 	flags := getUploadFlags()
+	artDetails := new(config.ArtifactoryDetails)
 	spec := utils.CreateSpec("testdata/a.txt", "repo-local", "", "", false, true, false, false)
-	uploaded1, _, err := Upload(spec, flags)
+	uploaded1, _, err := Upload(spec, flags, "", "" , artDetails)
 	checkUploaded(t, uploaded1, err, 1)
 
 	spec = utils.CreateSpec("testdata/aa.txt", "repo-local", "", "", false, true, false, false)
-	uploaded2, _, err := Upload(spec, flags)
+	uploaded2, _, err := Upload(spec, flags, "", "" , artDetails)
 	checkUploaded(t, uploaded2, err, 1)
 
 	spec = utils.CreateSpec("testdata/aa1*.txt", "repo-local", "", "", false, true, false, false)
-	uploaded3, _, err := Upload(spec, flags)
+	uploaded3, _, err := Upload(spec, flags, "", "" , artDetails)
 	checkUploaded(t, uploaded3, err, 0)
 
 }
@@ -34,27 +36,26 @@ func TestPatternNonRecursiveUpload(t *testing.T) {
 	testPatternUpload(t, false, flags)
 }
 
-func testPatternUpload(t *testing.T, recursive bool, flags *UploadFlags) {
+func testPatternUpload(t *testing.T, recursive bool, flags *artifactory.UploadConfiguration) {
 	sep := cliutils.GetTestsFileSeperator()
+	artDetails := new(config.ArtifactoryDetails)
 	spec := utils.CreateSpec("testdata" + sep + "*", "repo-local", "", "", recursive, true, false, false)
-	uploaded1, _, err := Upload(spec, flags)
+	uploaded1, _, err := Upload(spec, flags, "", "" , artDetails)
 	checkUploaded(t, uploaded1, err, 3)
 
 	spec = utils.CreateSpec("testdata" + sep + "a*", "repo-local", "", "", recursive, true, false, false)
-	uploaded2, _, err := Upload(spec, flags)
+	uploaded2, _, err := Upload(spec, flags, "", "" , artDetails)
 	checkUploaded(t, uploaded2, err, 2)
 
 	spec = utils.CreateSpec("testdata" + sep + "b*", "repo-local", "", "", recursive, true, false, false)
-	uploaded3, _, err := Upload(spec, flags)
+	uploaded3, _, err := Upload(spec, flags, "", "" , artDetails)
 	checkUploaded(t, uploaded3, err, 1)
 }
 
-func getUploadFlags() *UploadFlags {
-	flags := new(UploadFlags)
-	flags.ArtDetails = new(config.ArtifactoryDetails)
+func getUploadFlags() *artifactory.UploadConfiguration {
+	flags := new(artifactory.UploadConfiguration)
 	flags.DryRun = true
 	flags.Threads = 3
-
 	return flags
 }
 
